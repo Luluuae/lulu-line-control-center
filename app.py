@@ -8,7 +8,12 @@ import pandas as pd
 DB = os.getenv("LLCC_DB_PATH", "lulu_line.db")
 COMPANY = "LULU LINE GENERAL CONTRACTING AND EQUIPMENT LLC-SPC"
 
-st.set_page_config(page_title="Lulu Line Control Center", page_icon="🔐", layout="wide")
+st.set_page_config(
+    page_title="Lulu Line Control Center",
+    page_icon="icon-512.png.png",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 SESSION_TIMEOUT_MINUTES = 30
 MAX_FAILED_LOGINS = 5
