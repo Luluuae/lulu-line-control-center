@@ -1,10 +1,28 @@
+# Python / Streamlit
 __pycache__/
-*.pyc
-*.db
-*.db-wal
-*.db-shm
-*.sqlite
-*.sqlite3
+*.py[cod]
+.venv/
+venv/
 .env
 .streamlit/secrets.toml
+
+# Databases, documents and exports
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
 backups/
+uploads/
+
+# Mobile generated/native output
+mobile/node_modules/
+mobile/android/
+mobile/ios/
+mobile/dist/
+mobile/.env
+mobile/capacitor.config.json
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
