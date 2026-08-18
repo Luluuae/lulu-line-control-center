@@ -37,9 +37,13 @@ jobs:
       - name: Validate production settings
         working-directory: mobile
         run: |
-          test "$(find ios/App/App/Assets.xcassets/AppIcon.appiconset -name 'AppIcon-*.png' | wc -l | tr -d ' ')" = "18"
           python - <<'PY'
           import json, plistlib
+          from pathlib import Path
+          icon_dir = Path("ios/App/App/Assets.xcassets/AppIcon.appiconset")
+          icon_manifest = json.loads((icon_dir / "Contents.json").read_text())
+          assert len(icon_manifest["images"]) == 18
+          assert all((icon_dir / item["filename"]).is_file() for item in icon_manifest["images"])
           with open("ios/App/App/Info.plist", "rb") as handle:
               plist = plistlib.load(handle)
           assert plist["CFBundleDisplayName"] == "Lulu Line Control Center"
