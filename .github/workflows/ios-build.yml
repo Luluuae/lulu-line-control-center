@@ -40,7 +40,7 @@ jobs:
           test "$(find ios/App/App/Assets.xcassets/AppIcon.appiconset -name 'AppIcon-*.png' | wc -l | tr -d ' ')" = "18"
           /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" ios/App/App/Info.plist | grep -Fx "Lulu Line Control Center"
           /usr/libexec/PlistBuddy -c "Print :NSAppTransportSecurity:NSAllowsArbitraryLoads" ios/App/App/Info.plist | grep -Fx "false"
-          grep -F '"appId": "ae.lululine.controlcenter"' capacitor.config.json
+          node -e "const c=require('./capacitor.config.json'); if(c.appId!=='ae.lululine.controlcenter') process.exit(1)"
       - name: Build release for iPhone simulator
         working-directory: mobile/ios/App
         run: |
