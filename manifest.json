@@ -4,6 +4,13 @@
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#1f4e78",
-  "description": "Lulu Line General Contracting and Equipment LLC-SPC Control Center"
+  "theme_color": "#0b315d",
+  "icons": [
+    {
+      "src": "/icon-512.png.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
 }
