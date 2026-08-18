@@ -1,0 +1,32 @@
+name: iOS Validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["codex/**"]
+    paths: ["mobile/**", ".github/workflows/ios-build.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - working-directory: mobile
+        run: npm ci
+      - working-directory: mobile
+        env:
+          LLCC_SERVER_URL: ${{ secrets.LLCC_SERVER_URL }}
+        run: |
+          npm run configure
+          npx cap add ios
+          npx cap sync ios
+      - working-directory: mobile/ios/App
+        run: xcodebuild -workspace App.xcworkspace -scheme App -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build
