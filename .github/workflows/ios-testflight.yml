@@ -1,0 +1,84 @@
+name: iOS TestFlight Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  testflight:
+    runs-on: macos-latest
+    environment: apple-production
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --disable-pip-version-check Pillow==11.3.0
+      - uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.APPLE_DISTRIBUTION_CERTIFICATE_P12 }}
+          p12-password: ${{ secrets.APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+      - name: Configure App Store Connect key
+        env:
+          ASC_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+        run: |
+          mkdir -p "$HOME/private_keys"
+          printf '%s' "$ASC_PRIVATE_KEY" > "$HOME/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          chmod 600 "$HOME/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+      - working-directory: mobile
+        run: npm install --no-audit --no-fund
+      - working-directory: mobile
+        env:
+          LLCC_SERVER_URL: ${{ secrets.LLCC_SERVER_URL || 'https://lulu-line-control-center.streamlit.app' }}
+        run: |
+          npm run configure
+          npx cap add ios
+          npx cap sync ios
+          python scripts/prepare_ios.py ../icon-512.png ios/App/App/Assets.xcassets/AppIcon.appiconset
+          bash scripts/configure_ios.sh
+      - name: Signed archive
+        working-directory: mobile/ios/App
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          xcodebuild archive -workspace App.xcworkspace -scheme App -configuration Release             -destination "generic/platform=iOS" -archivePath build/LuluLine.xcarchive             PRODUCT_BUNDLE_IDENTIFIER=ae.lululine.controlcenter             DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic             MARKETING_VERSION=1.0.0 CURRENT_PROJECT_VERSION=${{ github.run_number }}             -allowProvisioningUpdates             -authenticationKeyPath "$HOME/private_keys/AuthKey_${ASC_KEY_ID}.p8"             -authenticationKeyID "$ASC_KEY_ID"             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+      - name: Export IPA
+        working-directory: mobile/ios/App
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          cat > build/ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+          <key>method</key><string>app-store-connect</string>
+          <key>signingStyle</key><string>automatic</string>
+          <key>teamID</key><string>$TEAM_ID</string>
+          <key>uploadSymbols</key><true/>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath build/LuluLine.xcarchive             -exportPath build/export -exportOptionsPlist build/ExportOptions.plist             -allowProvisioningUpdates             -authenticationKeyPath "$HOME/private_keys/AuthKey_${ASC_KEY_ID}.p8"             -authenticationKeyID "$ASC_KEY_ID"             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+      - name: Upload to TestFlight
+        working-directory: mobile/ios/App
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          ipa="$(find build/export -name '*.ipa' -print -quit)"
+          test -n "$ipa"
+          xcrun altool --upload-app --type ios --file "$ipa"             --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lulu-line-ios-signed-ipa
+          path: mobile/ios/App/build/export/*.ipa
+          if-no-files-found: error

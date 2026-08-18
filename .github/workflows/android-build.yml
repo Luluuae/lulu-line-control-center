@@ -1,0 +1,43 @@
+name: Android APK and AAB
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ["mobile/**", ".github/workflows/android-build.yml"]
+  push:
+    branches: ["codex/**"]
+    paths: ["mobile/**", ".github/workflows/android-build.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - working-directory: mobile
+        run: npm install --no-audit --no-fund
+      - working-directory: mobile
+        env:
+          LLCC_SERVER_URL: ${{ secrets.LLCC_SERVER_URL || 'https://lulu-line-control-center.streamlit.app' }}
+        run: |
+          npm run configure
+          npx cap add android
+          npx cap sync android
+      - working-directory: mobile/android
+        run: ./gradlew assembleDebug bundleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lulu-line-android-unsigned
+          path: |
+            mobile/android/app/build/outputs/apk/debug/app-debug.apk
+            mobile/android/app/build/outputs/bundle/debug/app-debug.aab
+          if-no-files-found: error
