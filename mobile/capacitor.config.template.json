@@ -1,0 +1,16 @@
+{
+  "appId": "ae.lululine.controlcenter",
+  "appName": "Lulu Line Control Center",
+  "webDir": "www",
+  "server": {
+    "url": "__LLCC_SERVER_URL__",
+    "cleartext": false,
+    "allowNavigation": ["__LLCC_SERVER_HOST__"]
+  },
+  "android": {
+    "allowMixedContent": false
+  },
+  "ios": {
+    "contentInset": "automatic"
+  }
+}
