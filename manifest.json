@@ -1,0 +1,9 @@
+{
+  "name": "Lulu Line Control Center",
+  "short_name": "Lulu Line",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1f4e78",
+  "description": "Lulu Line General Contracting and Equipment LLC-SPC Control Center"
+}
