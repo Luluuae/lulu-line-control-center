@@ -38,9 +38,18 @@ jobs:
         working-directory: mobile
         run: |
           test "$(find ios/App/App/Assets.xcassets/AppIcon.appiconset -name 'AppIcon-*.png' | wc -l | tr -d ' ')" = "18"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" ios/App/App/Info.plist | grep -Fx "Lulu Line Control Center"
-          /usr/libexec/PlistBuddy -c "Print :NSAppTransportSecurity:NSAllowsArbitraryLoads" ios/App/App/Info.plist | grep -Fx "false"
-          node -e "const c=require('./capacitor.config.json'); if(c.appId!=='ae.lululine.controlcenter') process.exit(1)"
+          python - <<'PY'
+          import json, plistlib
+          with open("ios/App/App/Info.plist", "rb") as handle:
+              plist = plistlib.load(handle)
+          assert plist["CFBundleDisplayName"] == "Lulu Line Control Center"
+          assert plist["NSAppTransportSecurity"]["NSAllowsArbitraryLoads"] is False
+          with open("capacitor.config.json", encoding="utf-8") as handle:
+              config = json.load(handle)
+          assert config["appId"] == "ae.lululine.controlcenter"
+          assert config["server"]["url"].startswith("https://")
+          print("Validated iOS identity, ATS and HTTPS endpoint")
+          PY
       - name: Build release for iPhone simulator
         working-directory: mobile/ios/App
         run: |
