@@ -10,7 +10,7 @@ COMPANY = "LULU LINE GENERAL CONTRACTING AND EQUIPMENT LLC-SPC"
 
 st.set_page_config(
     page_title="Lulu Line Control Center",
-    page_icon="icon-512.png.png",
+    page_icon="icon-512.png",
     layout="wide",
     initial_sidebar_state="expanded"
 )
