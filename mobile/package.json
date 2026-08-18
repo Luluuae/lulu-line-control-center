@@ -1,0 +1,23 @@
+{
+  "name": "lulu-line-control-center-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Installable Android and iOS client for Lulu Line Control Center",
+  "scripts": {
+    "configure": "node scripts/configure.mjs",
+    "sync": "npm run configure && npx cap sync",
+    "android": "npm run sync && npx cap open android",
+    "ios": "npm run sync && npx cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/android": "7.4.3",
+    "@capacitor/core": "7.4.3",
+    "@capacitor/ios": "7.4.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "7.4.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
