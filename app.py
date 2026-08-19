@@ -559,6 +559,14 @@ def restore_sqlite_backup(uploaded_bytes):
             dst.close()
             src.close()
 
+def sqlite_backup_already_restored():
+    c = conn()
+    found = c.execute(
+        "SELECT 1 FROM audit WHERE action='RESTORE' AND entity='database' LIMIT 1"
+    ).fetchone()
+    c.close()
+    return bool(found)
+
 # -----------------------------
 # Dashboard
 # -----------------------------
@@ -1534,15 +1542,18 @@ def admin():
     st.divider(); st.subheader("Backup & Export")
     if is_postgres(DATABASE_URL):
         st.success("Managed PostgreSQL persistent storage is connected.")
-        restore_file=st.file_uploader("Restore Existing SQLite Backup",type=["db","sqlite","sqlite3"],key="sqlite_restore")
-        if restore_file and st.button("Restore Backup to Managed Database",type="primary"):
-            try:
-                counts=restore_sqlite_backup(restore_file.getvalue())
-                audit("RESTORE","database","postgresql",str(counts))
-                st.success("Backup restored safely. No existing ERP records were overwritten.")
-                st.rerun()
-            except Exception as exc:
-                st.error(f"Restore stopped safely: {exc}")
+        if sqlite_backup_already_restored():
+            st.info("Existing SQLite backup has already been restored. Repeat restore is locked for safety.")
+        else:
+            restore_file=st.file_uploader("Restore Existing SQLite Backup",type=["db","sqlite","sqlite3"],key="sqlite_restore")
+            if restore_file and st.button("Restore Backup to Managed Database",type="primary"):
+                try:
+                    counts=restore_sqlite_backup(restore_file.getvalue())
+                    audit("RESTORE","database","postgresql",str(counts))
+                    st.success("Backup restored safely. No existing ERP records were overwritten.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Restore stopped safely: {exc}")
     else:
         st.warning("Current Community Cloud storage is not a production-grade permanent database. Download backups regularly until a managed cloud database is connected.")
     if not is_postgres(DATABASE_URL) and Path(DB).exists():
