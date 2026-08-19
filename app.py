@@ -303,18 +303,25 @@ def init():
         for col, ddl in items:
             add_col(c, table, col, ddl)
 
+    bootstrap_pw = os.getenv("BOOTSTRAP_ADMIN_PASSWORD", "")
+    try:
+        if not bootstrap_pw:
+            bootstrap_pw = str(st.secrets.get("BOOTSTRAP_ADMIN_PASSWORD", ""))
+    except Exception:
+        pass
     if not c.execute("SELECT 1 FROM users LIMIT 1").fetchone():
-        bootstrap_pw = os.getenv("BOOTSTRAP_ADMIN_PASSWORD", "")
-        try:
-            if not bootstrap_pw:
-                bootstrap_pw = str(st.secrets.get("BOOTSTRAP_ADMIN_PASSWORD", ""))
-        except Exception:
-            pass
         if bootstrap_pw and password_policy_error(bootstrap_pw) is None:
             c.execute(
                 "INSERT INTO users(username,name,role,password,must_change_password,created_at) VALUES(?,?,?,?,1,?)",
                 ("admin","System Administrator","Admin",hashpw(bootstrap_pw),datetime.now().isoformat())
             )
+
+    # Safe first-login recovery: a changed deployment secret can reset only a
+    # newly bootstrapped admin that has never successfully logged in.
+    first_admin = c.execute("SELECT last_login FROM users WHERE username='admin'").fetchone()
+    if first_admin and not first_admin["last_login"] and bootstrap_pw and password_policy_error(bootstrap_pw) is None:
+        c.execute("UPDATE users SET password=?,must_change_password=1 WHERE username='admin'",(hashpw(bootstrap_pw),))
+        c.execute("DELETE FROM login_security WHERE username='admin'")
 
     c.execute("UPDATE users SET role='Admin' WHERE username='admin' AND name='System Administrator' AND role='Partner'")
     c.execute("UPDATE users SET role='Accountant' WHERE role='Accounts'")
