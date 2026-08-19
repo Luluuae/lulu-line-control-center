@@ -319,7 +319,7 @@ def init():
     # Safe first-login recovery: a changed deployment secret can reset only a
     # newly bootstrapped admin that has never successfully logged in.
     first_admin = c.execute("SELECT last_login FROM users WHERE username='admin'").fetchone()
-    if first_admin and not first_admin["last_login"] and bootstrap_pw and password_policy_error(bootstrap_pw) is None:
+    if first_admin and not first_admin["last_login"] and bootstrap_pw:
         c.execute("UPDATE users SET password=?,must_change_password=1 WHERE username='admin'",(hashpw(bootstrap_pw),))
         c.execute("DELETE FROM login_security WHERE username='admin'")
 
