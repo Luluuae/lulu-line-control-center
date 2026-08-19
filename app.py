@@ -521,14 +521,18 @@ def restore_sqlite_backup(uploaded_bytes):
                 if not rows:
                     restored[table] = 0
                     continue
-                columns = rows[0].keys()
+                columns = list(rows[0].keys())
+                # Audit IDs may already be in use by the new managed database;
+                # let PostgreSQL assign fresh IDs so every old audit row survives.
+                if table == "audit" and "id" in columns:
+                    columns.remove("id")
                 names = ",".join(f'"{col}"' for col in columns)
                 marks = ",".join("?" for _ in columns)
                 if table == "users":
-                    conflict = (" ON CONFLICT(username) DO UPDATE SET name=excluded.name,role=excluded.role,"
-                                "password=excluded.password,active=excluded.active,created_at=excluded.created_at,"
-                                "must_change_password=excluded.must_change_password,"
-                                "last_password_change=excluded.last_password_change,last_login=excluded.last_login")
+                    # Preserve the current managed-database password and login
+                    # security fields; restore identity and role metadata only.
+                    conflict = (" ON CONFLICT(username) DO UPDATE SET name=excluded.name,"
+                                "role=excluded.role,active=excluded.active")
                 elif table == "settings":
                     conflict = " ON CONFLICT(key) DO UPDATE SET value=excluded.value"
                 else:
