@@ -112,10 +112,14 @@ class PostgresConnection:
 
 def connect(database_url, sqlite_path):
     if database_url:
-        import psycopg
-        from psycopg.rows import dict_row
-
-        connection = psycopg.connect(database_url, row_factory=dict_row, connect_timeout=15)
+        try:
+            import psycopg
+            from psycopg.rows import dict_row
+            connection = psycopg.connect(database_url, row_factory=dict_row, connect_timeout=15)
+        except (ImportError, ModuleNotFoundError):
+            import psycopg2
+            from psycopg2.extras import RealDictCursor
+            connection = psycopg2.connect(database_url, cursor_factory=RealDictCursor, connect_timeout=15)
         return PostgresConnection(connection)
     connection = sqlite3.connect(sqlite_path, check_same_thread=False)
     connection.row_factory = sqlite3.Row
