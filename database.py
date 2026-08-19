@@ -58,10 +58,17 @@ class PostgresCursor:
 
 
 class PostgresConnection:
-    def __init__(self, connection):
+    def __init__(self, connection, driver):
         self._connection = connection
+        self._driver = driver
 
-    def cursor(self):
+    def cursor(self, mapping=False):
+        if mapping and self._driver == "psycopg3":
+            from psycopg.rows import dict_row
+            return PostgresCursor(self._connection.cursor(row_factory=dict_row))
+        if mapping and self._driver == "psycopg2":
+            from psycopg2.extras import RealDictCursor
+            return PostgresCursor(self._connection.cursor(cursor_factory=RealDictCursor))
         return PostgresCursor(self._connection.cursor())
 
     def execute(self, sql, params=None):
@@ -72,17 +79,17 @@ class PostgresConnection:
         match = re.match(r"(?i)^PRAGMA\s+table_info\(([^)]+)\)", stripped)
         if match:
             table = match.group(1).strip().strip('"')
-            return self.cursor().execute(
+            return self.cursor(mapping=True).execute(
                 "SELECT column_name AS name FROM information_schema.columns "
                 "WHERE table_schema='public' AND table_name=? ORDER BY ordinal_position",
                 (table,),
             )
         if "FROM SQLITE_MASTER" in upper:
-            return self.cursor().execute(
+            return self.cursor(mapping=True).execute(
                 "SELECT tablename AS name FROM pg_catalog.pg_tables "
                 "WHERE schemaname='public' ORDER BY tablename"
             )
-        return self.cursor().execute(sql, params)
+        return self.cursor(mapping=True).execute(sql, params)
 
     def executemany(self, sql, params_seq):
         return self.cursor().executemany(sql, params_seq)
@@ -114,13 +121,13 @@ def connect(database_url, sqlite_path):
     if database_url:
         try:
             import psycopg
-            from psycopg.rows import dict_row
-            connection = psycopg.connect(database_url, row_factory=dict_row, connect_timeout=15)
+            connection = psycopg.connect(database_url, connect_timeout=15)
+            driver = "psycopg3"
         except (ImportError, ModuleNotFoundError):
             import psycopg2
-            from psycopg2.extras import RealDictCursor
-            connection = psycopg2.connect(database_url, cursor_factory=RealDictCursor, connect_timeout=15)
-        return PostgresConnection(connection)
+            connection = psycopg2.connect(database_url, connect_timeout=15)
+            driver = "psycopg2"
+        return PostgresConnection(connection, driver)
     connection = sqlite3.connect(sqlite_path, check_same_thread=False)
     connection.row_factory = sqlite3.Row
     return connection
