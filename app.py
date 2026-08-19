@@ -1,11 +1,23 @@
 
 import streamlit as st
-import sqlite3, hashlib, secrets, hmac, io, zipfile, re, os
+import sqlite3, hashlib, secrets, hmac, io, zipfile, re, os, tempfile
 from datetime import datetime, date, timedelta
 from pathlib import Path
 import pandas as pd
+from database import connect as db_connect, is_postgres
 
 DB = os.getenv("LLCC_DB_PATH", "lulu_line.db")
+
+def configured_database_url():
+    value = os.getenv("DATABASE_URL", "").strip()
+    if value:
+        return value
+    try:
+        return str(st.secrets.get("DATABASE_URL", "")).strip()
+    except Exception:
+        return ""
+
+DATABASE_URL = configured_database_url()
 COMPANY = "LULU LINE GENERAL CONTRACTING AND EQUIPMENT LLC-SPC"
 
 st.set_page_config(
@@ -24,9 +36,7 @@ PASSWORD_MIN_LENGTH = 12
 # Core database / security
 # -----------------------------
 def conn():
-    c = sqlite3.connect(DB, check_same_thread=False)
-    c.row_factory = sqlite3.Row
-    return c
+    return db_connect(DATABASE_URL, DB)
 
 def hashpw(pw, salt=None, iterations=600000):
     salt = salt or secrets.token_hex(16)
@@ -471,6 +481,72 @@ def make_backup_zip():
     c.close()
     bio.seek(0)
     return bio.getvalue()
+
+MIGRATION_TABLES = [
+    "users", "settings", "requests", "partner_votes", "projects", "assets",
+    "receivables", "receivable_payments", "manpower", "employee_documents",
+    "accommodation", "payroll", "expenses", "audit", "login_security",
+]
+
+def restore_sqlite_backup(uploaded_bytes):
+    if not is_postgres(DATABASE_URL):
+        raise RuntimeError("Managed PostgreSQL is not connected.")
+    with tempfile.NamedTemporaryFile(suffix=".db") as tmp:
+        tmp.write(uploaded_bytes)
+        tmp.flush()
+        src = sqlite3.connect(f"file:{tmp.name}?mode=ro", uri=True)
+        src.row_factory = sqlite3.Row
+        if src.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+            src.close()
+            raise ValueError("The uploaded SQLite backup failed its integrity check.")
+        source_tables = {r[0] for r in src.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        dst = conn()
+        try:
+            business = [t for t in MIGRATION_TABLES if t not in {"users", "settings", "audit", "login_security"}]
+            existing = sum(dst.execute(f'SELECT COUNT(*) AS n FROM "{t}"').fetchone()["n"] for t in business)
+            if existing:
+                raise ValueError("Restore stopped: the managed database already contains ERP records.")
+            restored = {}
+            for table in MIGRATION_TABLES:
+                if table not in source_tables:
+                    continue
+                rows = src.execute(f'SELECT * FROM "{table}"').fetchall()
+                if not rows:
+                    restored[table] = 0
+                    continue
+                columns = rows[0].keys()
+                names = ",".join(f'"{col}"' for col in columns)
+                marks = ",".join("?" for _ in columns)
+                if table == "users":
+                    conflict = (" ON CONFLICT(username) DO UPDATE SET name=excluded.name,role=excluded.role,"
+                                "password=excluded.password,active=excluded.active,created_at=excluded.created_at,"
+                                "must_change_password=excluded.must_change_password,"
+                                "last_password_change=excluded.last_password_change,last_login=excluded.last_login")
+                elif table == "settings":
+                    conflict = " ON CONFLICT(key) DO UPDATE SET value=excluded.value"
+                else:
+                    conflict = " ON CONFLICT DO NOTHING"
+                dst.executemany(
+                    f'INSERT INTO "{table}" ({names}) VALUES ({marks}){conflict}',
+                    [tuple(row[col] for col in columns) for row in rows],
+                )
+                restored[table] = len(rows)
+            for table in MIGRATION_TABLES:
+                cols = dst.execute(f'PRAGMA table_info({table})').fetchall()
+                if any(col["name"] == "id" for col in cols):
+                    dst.execute(
+                        "SELECT setval(pg_get_serial_sequence(?, 'id'), "
+                        f'COALESCE((SELECT MAX(id) FROM "{table}"), 1), true)',
+                        (table,),
+                    )
+            dst.commit()
+            return restored
+        except Exception:
+            dst.rollback()
+            raise
+        finally:
+            dst.close()
+            src.close()
 
 # -----------------------------
 # Dashboard
@@ -1445,8 +1521,20 @@ def admin():
                 c=conn(); c.execute("UPDATE users SET password=?,must_change_password=1,last_password_change=? WHERE username=?",(hashpw(temp),datetime.now().isoformat(),ru['username'])); c.execute("DELETE FROM login_security WHERE username=?",(ru['username'],)); c.commit(); c.close(); audit("ADMIN_PASSWORD_RESET","user",ru['username']); st.success("Temporary password reset. User must change it at next login.")
 
     st.divider(); st.subheader("Backup & Export")
-    st.warning("Current Community Cloud storage is not a production-grade permanent database. Download backups regularly until a managed cloud database is connected.")
-    if Path(DB).exists():
+    if is_postgres(DATABASE_URL):
+        st.success("Managed PostgreSQL persistent storage is connected.")
+        restore_file=st.file_uploader("Restore Existing SQLite Backup",type=["db","sqlite","sqlite3"],key="sqlite_restore")
+        if restore_file and st.button("Restore Backup to Managed Database",type="primary"):
+            try:
+                counts=restore_sqlite_backup(restore_file.getvalue())
+                audit("RESTORE","database","postgresql",str(counts))
+                st.success("Backup restored safely. No existing ERP records were overwritten.")
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Restore stopped safely: {exc}")
+    else:
+        st.warning("Current Community Cloud storage is not a production-grade permanent database. Download backups regularly until a managed cloud database is connected.")
+    if not is_postgres(DATABASE_URL) and Path(DB).exists():
         c=conn(); c.execute('PRAGMA wal_checkpoint(FULL)'); c.close()
         st.download_button("Download Full SQLite Backup",data=Path(DB).read_bytes(),file_name=f"Lulu_Line_Backup_{date.today()}.db",mime="application/octet-stream")
     st.download_button("Download CSV Backup ZIP",data=make_backup_zip(),file_name=f"Lulu_Line_CSV_Backup_{date.today()}.zip",mime="application/zip")
